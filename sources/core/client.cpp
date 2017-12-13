@@ -223,31 +223,99 @@ client::try_commit(void) {
   }
 }
 
+client&
+client::subscribe(const std::string& channel, const subscribe_callback_t& callback, const acknowledgement_callback_t& acknowledgement_callback) {
+  std::lock_guard<std::mutex> lock(m_subscribed_channels_mutex);
+
+  __CPP_REDIS_LOG(debug, "cpp_redis::subscriber attemps to subscribe to channel " + channel);
+  unprotected_subscribe(channel, callback, acknowledgement_callback);
+  __CPP_REDIS_LOG(info, "cpp_redis::subscriber subscribed to channel " + channel);
+  return *this;
+}
+
+void
+client::unprotected_subscribe(const std::string& channel, const subscribe_callback_t& callback, const acknowledgement_callback_t& acknowledgement_callback) {
+  m_subscribed_channels[channel] = {callback, acknowledgement_callback};
+  m_client.send({"SUBSCRIBE", channel});
+}
+
 void
 client::connection_receive_handler(network::redis_connection&, reply& reply) {
   reply_callback_t callback = nullptr;
 
-  __CPP_REDIS_LOG(info, "cpp_redis::client received reply");
-  {
-    std::lock_guard<std::mutex> lock(m_callbacks_mutex);
-    m_callbacks_running += 1;
+  if (!reply.is_array()) {
 
-    if (m_commands.size()) {
-      callback = m_commands.front().callback;
-      m_commands.pop();
+    __CPP_REDIS_LOG(info, "cpp_redis::client received reply");
+    {
+      std::lock_guard<std::mutex> lock(m_callbacks_mutex);
+      m_callbacks_running += 1;
+
+      if (m_commands.size()) {
+        callback = m_commands.front().callback;
+        m_commands.pop();
+      }
+    }
+
+    if (callback) {
+      __CPP_REDIS_LOG(debug, "cpp_redis::client executes reply callback");
+      callback(reply);
+    }
+
+    {
+      std::lock_guard<std::mutex> lock(m_callbacks_mutex);
+      m_callbacks_running -= 1;
+      m_sync_condvar.notify_all();
+    }
+    return;
+  } 
+  else 
+  {
+    auto& array = reply.as_array();
+
+    //! Array size of 3 -> SUBSCRIBE if array[2] is a string
+    //! Array size of 3 -> AKNOWLEDGEMENT if array[2] is an integer
+    //! Array size of 4 -> PSUBSCRIBE
+    //! Otherwise -> unexpected reply
+    if (array.size() == 3 && array[2].is_integer())
+    {
+      // handle_acknowledgement_reply(array);
+    }
+    else if (array.size() == 3 && array[2].is_string())
+    {
+      handle_subscribe_reply(array);
+    }
+    else if (array.size() == 4)
+    {
+      // handle_psubscribe_reply(array);
     }
   }
+}
 
-  if (callback) {
-    __CPP_REDIS_LOG(debug, "cpp_redis::client executes reply callback");
-    callback(reply);
-  }
+void
+client::handle_subscribe_reply(const std::vector<reply>& reply) {
+  if (reply.size() != 3)
+    return;
 
-  {
-    std::lock_guard<std::mutex> lock(m_callbacks_mutex);
-    m_callbacks_running -= 1;
-    m_sync_condvar.notify_all();
-  }
+  const auto& title   = reply[0];
+  const auto& channel = reply[1];
+  const auto& message = reply[2];
+
+  if (!title.is_string()
+      || !channel.is_string()
+      || !message.is_string())
+    return;
+
+  if (title.as_string() != "message")
+    return;
+
+  std::lock_guard<std::mutex> lock(m_subscribed_channels_mutex);
+
+  auto it = m_subscribed_channels.find(channel.as_string());
+  if (it == m_subscribed_channels.end())
+    return;
+
+  __CPP_REDIS_LOG(debug, "cpp_redis::subscriber executes subscribe callback for channel " + channel.as_string());
+  it->second.subscribe_callback(channel.as_string(), message.as_string());
 }
 
 void

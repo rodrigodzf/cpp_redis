@@ -37,6 +37,7 @@
 #include <cpp_redis/misc/logger.hpp>
 #include <cpp_redis/network/redis_connection.hpp>
 #include <cpp_redis/network/tcp_client_iface.hpp>
+// #include <cpp_redis/core/subscriber.hpp>
 
 namespace cpp_redis {
 
@@ -105,6 +106,17 @@ public:
   //!
   typedef std::function<void(const std::string& host, std::size_t port, connect_state status)> connect_callback_t;
 
+  //!
+  //! subscribe callback, called whenever a new message is published on a subscribed channel
+  //! takes as parameter the channel and the message
+  //!
+  typedef std::function<void(const std::string&, const std::string&)> subscribe_callback_t;
+
+  //!
+  //! acknowledgement callback called whenever a subscribe completes
+  //! takes as parameter the int returned by the redis server (usually the number of channels you are subscribed to)
+  //!
+  typedef std::function<void(int64_t)> acknowledgement_callback_t;
   //!
   //! Connect to redis server
   //!
@@ -1305,6 +1317,9 @@ public:
   client& zunionstore(const std::string& destination, std::size_t numkeys, const std::vector<std::string>& keys, const std::vector<std::size_t> weights, aggregate_method method, const reply_callback_t& reply_callback);
   std::future<reply> zunionstore(const std::string& destination, std::size_t numkeys, const std::vector<std::string>& keys, const std::vector<std::size_t> weights, aggregate_method method);
 
+  client& subscribe(const std::string& channel, const subscribe_callback_t& callback, const acknowledgement_callback_t& acknowledgement_callback = nullptr);
+  void unprotected_subscribe(const std::string& channel, const subscribe_callback_t& callback, const acknowledgement_callback_t& acknowledgement_callback);
+  void handle_subscribe_reply(const std::vector<reply>& reply);
 private:
   //! client kill impl
   template <typename T>
@@ -1468,6 +1483,33 @@ private:
   //! number of callbacks currently being running
   //!
   std::atomic<unsigned int> m_callbacks_running;
+
+
+  //!
+  //! struct to hold callbacks (sub and ack) for a given channel or pattern
+  //!
+  struct callback_holder {
+    subscribe_callback_t subscribe_callback;
+    acknowledgement_callback_t acknowledgement_callback;
+  };
+
+  //!
+  //! subscribed channels and their associated channels
+  //!
+  std::map<std::string, callback_holder> m_subscribed_channels;
+  //!
+  //! psubscribed channels and their associated channels
+  //!
+  std::map<std::string, callback_holder> m_psubscribed_channels;
+
+  //!
+  //! sub chans thread safety
+  //!
+  std::mutex m_psubscribed_channels_mutex;
+  //!
+  //! psub chans thread safety
+  //!
+  std::mutex m_subscribed_channels_mutex;
 }; // namespace cpp_redis
 
 } // namespace cpp_redis

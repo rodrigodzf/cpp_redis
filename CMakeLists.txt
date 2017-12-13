@@ -23,7 +23,7 @@
 ###
 # config
 ###
-cmake_minimum_required(VERSION 2.8.7)
+cmake_minimum_required(VERSION 3.9.3 )
 set(CMAKE_MACOSX_RPATH 1)
 include(${CMAKE_ROOT}/Modules/ExternalProject.cmake)
 
@@ -55,14 +55,14 @@ if(WIN32)
   endif()
 
   foreach(flag_var CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_DEBUG CMAKE_CXX_FLAGS_RELEASE)
-    if("${MSVC_RUNTIME_LIBRARY_CONFIG}" STREQUAL "/MT")
-      string(REPLACE "/MD" "/MT" ${flag_var} "${${flag_var}}")
-    elseif("${MSVC_RUNTIME_LIBRARY_CONFIG}" STREQUAL "/MD")
-      string(REPLACE "/MT" "/MD" ${flag_var} "${${flag_var}}")
-    else()
-      string(REPLACE "/MD" "${MSVC_RUNTIME_LIBRARY_CONFIG}" ${flag_var} "${${flag_var}}")
-      string(REPLACE "/MT" "${MSVC_RUNTIME_LIBRARY_CONFIG}" ${flag_var} "${${flag_var}}")
-    endif()
+    # if("${MSVC_RUNTIME_LIBRARY_CONFIG}" STREQUAL "/MT")
+    #   string(REPLACE "/MD" "/MT" ${flag_var} "${${flag_var}}")
+    # elseif("${MSVC_RUNTIME_LIBRARY_CONFIG}" STREQUAL "/MD")
+    #   string(REPLACE "/MT" "/MD" ${flag_var} "${${flag_var}}")
+    # else()
+    #   string(REPLACE "/MD" "${MSVC_RUNTIME_LIBRARY_CONFIG}" ${flag_var} "${${flag_var}}")
+    #   string(REPLACE "/MT" "${MSVC_RUNTIME_LIBRARY_CONFIG}" ${flag_var} "${${flag_var}}")
+    # endif()
   endforeach()
 
   add_definitions(-D_UNICODE)
